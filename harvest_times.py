@@ -6,6 +6,7 @@ except:
     from django.utils import simplejson as json
 import re
 import urllib2
+from xml.etree import ElementTree
 
 import bottle
 from bottle import Bottle, request
@@ -33,11 +34,13 @@ def index():
 @auth_required
 def harvest_times(domain, project, task):
     username, password = request.auth
+    project_id = _find_project_id(domain, project, username, password)
+    task_id = _find_task_id(domain, task, username, password)
     data = json.loads(request.body.read())
     count = 0
     time = 0
     for commit in data['commits']:
-        data, hours = _process_commit(commit, username, project, task)
+        data, hours = _process_commit(commit, username, project_id, task_id)
         if data:
             count += 1
             time += hours
@@ -47,7 +50,22 @@ def harvest_times(domain, project, task):
                 return {'error': True, 'message': 'Harvest API is down'}
     return {'success': True, 'commits_added': count, 'hours': hours}
 
-def _process_commit(commit, username, project, task):
+def _find_project_id(domain, project, username, password):
+    response = _send_to_harvest(domain, 'projects', username, password)
+    return _find_id_by_name(response, project)
+
+def _find_task_id(domain, task, username, password):
+    response = _send_to_harvest(domain, 'tasks', username, password)
+    return _find_id_by_name(response, task)
+
+def _find_id_by_name(xml, name):
+    tree = ElementTree.fromstring(xml)
+    for project in tree.getchildren():
+        if project.findtext('name') == name:
+            return int(project.findtext('id'))
+    return None
+
+def _process_commit(commit, username, project_id, task_id):
     if commit['author']['email'] != username:
         # the commit came from someone else, ignore
         return None, None
@@ -61,10 +79,16 @@ def _process_commit(commit, username, project, task):
     date_no_timezone = commit['timestamp'][:-6]
     date = datetime.strptime(date_no_timezone, '%a, %d %b %Y %H:%M:%S')
     date = date.strftime('%Y-%m-%d')
-    data = {'notes': message, 'hours': hours, 'project': project,
-            'task': task, 'spent_at': date}
-    xml = ''.join(['<%s>%s</%s>' % (k,v,k) for k,v in data.items()])
-    return '<request>%s</request>' % xml, hours
+    xml = """
+        <request>
+            <notes>%s</notes>
+            <hours>%s</hours>
+            <project_id type="integer">%s</project_id>
+            <task_id type="integer">%s</task_id>
+            <spent_at type="date">%s</spent_at>
+        </request>
+    """ % (message, hours, project_id, task_id, date)
+    return xml, hours
 
 def _send_to_harvest(domain, path, username, password, data=None):
     """POST the given data message to the harvest API, if no data is provided GET"""
