@@ -1,6 +1,9 @@
 import base64
 from datetime import datetime
-from django.utils import simplejson as json
+try:
+    import json
+except:
+    from django.utils import simplejson as json
 import re
 import urllib2
 
@@ -32,7 +35,7 @@ def harvest_times(domain, project, task):
     count = 0
     time = 0
     for commit in data['commits']:
-        data, hours = _process_commit(commit, project, task)
+        data, hours = _process_commit(commit, username, project, task)
         if data:
             count += 1
             time += hours
@@ -42,16 +45,20 @@ def harvest_times(domain, project, task):
                 return {'error': True, 'message': 'Harvest API is down'}
     return {'success': True, 'commits_added': count, 'hours': hours}
 
-def _process_commit(commit, project, task):
-    date_no_timezone = commit['timestamp'][:-6]
-    date = datetime.strptime(date_no_timezone, '%a, %d %b %Y %H:%M:%S')
-    date = date.strftime('%Y-%m-%d')
+def _process_commit(commit, username, project, task):
+    if commit['author']['email'] != username:
+        # the commit came from someone else, ignore
+        return None, None
     message = commit['message']
     match = TIME_re.match(message)
     if not match:
+        # the commit doesn't contain time tracking, ignore
         return None, None
     minutes = int(match.group(1))
     hours = minutes / 60.0
+    date_no_timezone = commit['timestamp'][:-6]
+    date = datetime.strptime(date_no_timezone, '%a, %d %b %Y %H:%M:%S')
+    date = date.strftime('%Y-%m-%d')
     data = {'notes': message, 'hours': hours, 'project': project,
             'task': task, 'spent_at': date}
     xml = ''.join(['<%s>%s</%s>' % (k,v,k) for k,v in data.items()])
@@ -69,4 +76,5 @@ def main():
     bottle.run(server='gae')
 
 if __name__ == '__main__':
-    main()
+    bottle.debug(True)
+    bottle.run(port=8000, reloader=True)
