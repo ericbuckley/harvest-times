@@ -48,7 +48,6 @@ def harvest_times(domain, project, task):
     try:
         data = json.loads(request.POST['payload'])
     except Exception, e:
-        logging.error(request.POST['payload'])
         logging.fatal('Payload Exception: %s' % e)
     count = 0
     time = 0
