@@ -1,8 +1,0 @@
-application: harvest-times
-version: 2
-runtime: python
-api_version: 1
- 
-handlers: 
-- url: /.*
-  script: harvest_times.py
