@@ -8,26 +8,28 @@ import re
 import urllib2
 
 import bottle
-from bottle import request, get, post, error, abort
+from bottle import Bottle, request
+
+app = Bottle()
 
 TIME_re = re.compile(r'.+{t:(\d+)}.*')
 
-@error(403)
+@app.error(403)
 def error403(code):
     return 'No auth, No way!'
 
 def auth_required(func):
     def wrapper(*args, **kwargs):
         if not request.auth:
-            return abort(403)
+            return app.abort(403)
         return func(*args, **kwargs)
     return wrapper
 
-@get('/')
+@app.get('/')
 def index():
     return 'Looking for something?'
 
-@post('/:domain/:project/:task/')
+@app.post('/:domain/:project/:task/')
 @auth_required
 def harvest_times(domain, project, task):
     username, password = request.auth
@@ -73,8 +75,7 @@ def _send_to_harvest(domain, path, username, password, data=None):
     return urllib2.urlopen(request).read()
 
 def main():
-    bottle.run(server='gae')
+    bottle.run(app, server='gae')
 
 if __name__ == '__main__':
-    bottle.debug(True)
-    bottle.run(port=8000, reloader=True)
+    main()
