@@ -10,10 +10,14 @@ from xml.etree import ElementTree
 
 from google.appengine.api import urlfetch
 
+from pytz.gae import pytz
+
 import bottle
 from bottle import request, get, post, error, abort
 
 TIME_re = re.compile(r'.+{t:(\d+)}.*')
+UTC=pytz.utc
+EST=pytz.timezone('US/Eastern')
 
 def dbg():
     """ Enter pdb in App Engine
@@ -93,6 +97,7 @@ def _process_commit(commit, username, project_id, task_id):
     hours = minutes / 60.0
     date_no_timezone = commit['timestamp'][:-6]
     date = datetime.strptime(date_no_timezone, '%a, %d %b %Y %H:%M:%S')
+    date = UTC.localize(date).astimezone(EST)
     date = date.strftime('%Y-%m-%d')
     xml = """
         <request>
