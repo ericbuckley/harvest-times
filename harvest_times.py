@@ -47,8 +47,11 @@ def index():
 @auth_required
 def harvest_times(domain, project, task):
     username, password = request.auth
+    logging.debug('auth username: %s / auth password: %s' % (username, password))
     project_id = _find_project_id(domain, project, username, password)
+    logging.debug('project id: %s' % project_id)
     task_id = _find_task_id(domain, task, username, password)
+    logging.debug('task id: %s' % task_id)
     try:
         data = json.loads(request.POST['payload'])
     except Exception, e:
@@ -58,6 +61,7 @@ def harvest_times(domain, project, task):
     for commit in data['commits']:
         data, hours = _process_commit(commit, username, project_id, task_id)
         if data:
+            logging.debug('push %s to harvest' % data)
             count += 1
             time += hours
             try:
@@ -66,19 +70,20 @@ def harvest_times(domain, project, task):
                 return {'error': True, 'message': 'Harvest API is down'}
     return {'success': True, 'commits_added': count, 'hours': hours}
 
-def _find_project_id(domain, project, username, password):
+def _find_project_id(domain, project_name, username, password):
     response = _send_to_harvest(domain, 'projects', username, password)
-    return _find_id_by_name(response, project)
+    for project in json.loads(response.content):
+        data = project['project']
+        if data['name'] == project_name or data['code'] == project_name:
+            return data['id']
+    return None
 
-def _find_task_id(domain, task, username, password):
+def _find_task_id(domain, task_name, username, password):
     response = _send_to_harvest(domain, 'tasks', username, password)
-    return _find_id_by_name(response, task)
-
-def _find_id_by_name(xml, name):
-    tree = ElementTree.fromstring(xml.content)
-    for project in tree.getchildren():
-        if project.findtext('name') == name:
-            return int(project.findtext('id'))
+    for task in json.loads(response.content):
+        data = task['task']
+        if data['name'] == task_name:
+            return data['id']
     return None
 
 def _process_commit(commit, username, project_id, task_id):
@@ -99,22 +104,19 @@ def _process_commit(commit, username, project_id, task_id):
     date = datetime.strptime(date_no_timezone, '%a, %d %b %Y %H:%M:%S')
     date = UTC.localize(date).astimezone(EST)
     date = date.strftime('%Y-%m-%d')
-    xml = """
-        <request>
-            <notes>%s</notes>
-            <hours>%s</hours>
-            <project_id type="integer">%s</project_id>
-            <task_id type="integer">%s</task_id>
-            <spent_at type="date">%s</spent_at>
-        </request>
-    """ % (message, hours, project_id, task_id, date)
-    logging.debug('xml: %s' % xml)
-    return str(xml.replace('\n', ' ')), hours
+    data = {
+        'notes': message,
+        'hours': hours,
+        'project_id': project_id,
+        'task_id': task_id,
+        'spent_at': date
+        }
+    return json.dumps(data), hours
 
 def _send_to_harvest(domain, path, username, password, data=None):
     """POST the given data message to the harvest API, if no data is provided GET"""
     url = 'https://%s.harvestapp.com/%s' % (domain, path)
-    headers = {'Content-type': 'application/xml', 'Accept': 'application/xml', 
+    headers = {'Content-type': 'application/json', 'Accept': 'application/json', 
         'Authorization': 'Basic %s' % base64.b64encode('%s:%s' % (username, password))}
     logging.debug(url)
     logging.debug(data)
