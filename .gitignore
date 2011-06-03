@@ -3,3 +3,5 @@
 app.yaml
 bottle.py
 pytz/*
+.DS_Store
+*.httpclient
